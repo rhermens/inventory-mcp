@@ -8,10 +8,11 @@ use std::{
 
 use anyhow::Result;
 use rmcp::{
+    handler::server::wrapper::Parameters,
     model::{CallToolResult, ContentBlock},
-    tool, tool_router,
+    schemars, tool, tool_handler, tool_router,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::{process::Command, task::JoinSet};
 
 #[derive(Clone)]
@@ -120,10 +121,82 @@ impl From<&Binary> for ContentBlock {
     }
 }
 
-#[tool_router(server_handler)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SearchRequest {
+    /// Case-insensitive substring to match against binary names and manual pages.
+    query: String,
+    /// Maximum number of results. Defaults to 20; zero returns no results.
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DescribeRequest {
+    /// Exact, case-sensitive binary name.
+    name: String,
+}
+
+#[tool_handler(
+    name = "inventory-mcp",
+    instructions = "Use this server to discover local command-line tools and read their installed manual pages before choosing a command or its flags. Use search with a task keyword or binary name to find candidates (default limit: 20). Use describe with an exact binary name to read its full manual. Use list when you need the complete inventory. Results reflect the server's startup PATH and installed manuals. Entries without a readable manual are omitted. This server does not execute discovered commands."
+)]
+impl rmcp::ServerHandler for Inventory {}
+
+#[tool_router]
 impl Inventory {
     #[tool(description = "List available user binaries")]
     fn list(&self) -> CallToolResult {
         CallToolResult::success(self.binaries.iter().map(|e| e.into()).collect())
     }
+
+    #[tool(
+        description = "Search binary names and manual pages by case-insensitive substring; defaults to 20 results sorted by name"
+    )]
+    fn search(&self, Parameters(request): Parameters<SearchRequest>) -> CallToolResult {
+        let query = request.query.to_lowercase();
+        let mut matches: Vec<_> = self
+            .binaries
+            .iter()
+            .filter(|binary| {
+                binary
+                    .binary
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .contains(&query)
+                    || binary.description.to_lowercase().contains(&query)
+            })
+            .collect();
+        matches.sort_unstable_by(|left, right| {
+            left.binary
+                .cmp(&right.binary)
+                .then_with(|| left.description.cmp(&right.description))
+        });
+
+        CallToolResult::success(
+            matches
+                .into_iter()
+                .take(request.limit.unwrap_or(20))
+                .map(ContentBlock::from)
+                .collect(),
+        )
+    }
+
+    #[tool(description = "Get the full manual page for an exact, case-sensitive binary name")]
+    fn describe(&self, Parameters(request): Parameters<DescribeRequest>) -> CallToolResult {
+        let name = OsString::from(&request.name);
+        match self
+            .binaries
+            .iter()
+            .filter(|binary| binary.binary == name)
+            .min_by(|left, right| left.description.cmp(&right.description))
+        {
+            Some(binary) => CallToolResult::success(vec![binary.into()]),
+            None => CallToolResult::error(vec![ContentBlock::text(format!(
+                "Binary not found: {}",
+                request.name
+            ))]),
+        }
+    }
 }
+
+#[cfg(test)]
+mod tests;

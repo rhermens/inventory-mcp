@@ -54,6 +54,8 @@ For development, run the server through Cargo, as shown in [`.pi/mcp.json`](.pi/
 
 The server communicates through stdin and stdout. It is not an interactive CLI.
 
+During MCP initialization, the server provides agent instructions for discovering tools with `search`, reading manuals with `describe`, and requesting the complete inventory with `list`.
+
 ## Tools
 
 ### `list`
@@ -65,6 +67,31 @@ Takes no arguments. Returns one MCP text content block per discovered entry:
 ```
 
 The description contains the full output of `man <file name>`, not only the `NAME` or `SYNOPSIS` section. Results have no guaranteed order.
+
+### `search`
+
+Finds case-insensitive substring matches in file names and full manual page text:
+
+```json
+{ "query": "version control", "limit": 5 }
+```
+
+- `query` is required. An empty query matches every entry.
+- `limit` is optional and defaults to 20. Zero returns no results.
+- Matches are sorted by file name, then manual page text, before applying the limit.
+- Each result uses the same full-text format as `list`. No matches returns an empty successful result.
+
+### `describe`
+
+Returns the full manual page for an exact, case-sensitive file name:
+
+```json
+{ "name": "git" }
+```
+
+An unknown name returns an MCP tool error with `Binary not found: <name>`. If several entries share a name, the first manual page in lexical order is returned.
+
+Both tools use the startup inventory and perform no additional manual lookups.
 
 ## Discovery behavior
 
