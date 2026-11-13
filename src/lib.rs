@@ -89,7 +89,7 @@ pub struct Binary {
 impl Binary {
     async fn try_new(value: DirEntry) -> Result<Self> {
         let output = Command::new("man")
-            .args([value.file_name()])
+            .args([value.file_name().to_str().expect("No file name")])
             .output()
             .await?;
 
