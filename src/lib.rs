@@ -1,10 +1,4 @@
-use std::{
-    collections::HashSet,
-    env,
-    ffi::OsString,
-    fs::{self, DirEntry},
-    path::PathBuf,
-};
+use std::{env, ffi::OsString, fs::DirEntry};
 
 use anyhow::Result;
 use rmcp::{
@@ -13,7 +7,7 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
-use tokio::process::Command;
+use tokio::{io::stdout, process::Command};
 
 #[derive(Clone)]
 pub struct Inventory {}
@@ -68,8 +62,6 @@ impl From<&Binary> for ContentBlock {
 struct SearchRequest {
     /// Case-insensitive substring to match against binary names and manual pages.
     query: String,
-    /// Maximum number of results. Defaults to 20; zero returns no results.
-    limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -90,8 +82,8 @@ impl Inventory {
         description = "Search binary names and manual pages by case-insensitive substring; defaults to 20 results sorted by name"
     )]
     async fn search(&self, Parameters(request): Parameters<SearchRequest>) -> CallToolResult {
-        let output = match Command::new("apropos")
-            .args([request.query.to_lowercase()])
+        let output = match Command::new("man")
+            .args(["-k", &request.query.to_lowercase()])
             .output()
             .await
         {
@@ -106,8 +98,8 @@ impl Inventory {
             CallToolResult::success(
                 stdout
                     .split("\n")
-                    .into_iter()
-                    .take(request.limit.unwrap_or(20))
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
                     .map(ContentBlock::text)
                     .collect(),
             )
@@ -117,8 +109,20 @@ impl Inventory {
     }
 
     #[tool(description = "Get the full manual page for an exact, case-sensitive binary name")]
-    fn describe(&self, Parameters(request): Parameters<DescribeRequest>) -> CallToolResult {
-        todo!()
+    async fn describe(&self, Parameters(request): Parameters<DescribeRequest>) -> CallToolResult {
+        let output = match Command::new("man").args(vec![&request.name]).output().await {
+            Ok(o) => o,
+            Err(err) => return CallToolResult::error(vec![ContentBlock::text(err.to_string())]),
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        if output.status.success() {
+            CallToolResult::success(vec![ContentBlock::text(stdout.to_string())])
+        } else {
+            CallToolResult::error(vec![ContentBlock::text(stderr)])
+        }
     }
 }
 
