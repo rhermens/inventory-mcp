@@ -7,6 +7,8 @@ use rmcp::{
 use serde::Deserialize;
 use tokio::process::Command;
 
+pub mod cli;
+
 #[derive(Clone)]
 pub struct Inventory {}
 
@@ -17,15 +19,15 @@ impl Inventory {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SearchRequest {
+pub struct SearchRequest {
     /// Case-insensitive substring to match against binary names and manual pages.
-    query: String,
+    pub query: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct DescribeRequest {
+pub struct DescribeRequest {
     /// Exact, case-sensitive binary name.
-    name: String,
+    pub name: String,
 }
 
 #[tool_handler(
@@ -39,7 +41,7 @@ impl Inventory {
     #[tool(
         description = "Search binary names and manual pages by case-insensitive substring; defaults to 20 results sorted by name"
     )]
-    async fn search(&self, Parameters(request): Parameters<SearchRequest>) -> CallToolResult {
+    pub async fn search(&self, Parameters(request): Parameters<SearchRequest>) -> CallToolResult {
         let output = match Command::new("man")
             .args(["-k", &request.query.to_lowercase()])
             .output()
@@ -67,7 +69,10 @@ impl Inventory {
     }
 
     #[tool(description = "Get the full manual page for an exact, case-sensitive binary name")]
-    async fn describe(&self, Parameters(request): Parameters<DescribeRequest>) -> CallToolResult {
+    pub async fn describe(
+        &self,
+        Parameters(request): Parameters<DescribeRequest>,
+    ) -> CallToolResult {
         let output = match Command::new("man").args(vec![&request.name]).output().await {
             Ok(o) => o,
             Err(err) => return CallToolResult::error(vec![ContentBlock::text(err.to_string())]),

@@ -17,6 +17,7 @@
           src = craneLib.cleanCargoSource ./.;
           strictDeps = true;
           nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ];
         };
 
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;

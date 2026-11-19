@@ -5,6 +5,11 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
+clap = { version = "4.6.8", features = ["derive"] }
 rmcp = { version = "3.10.0", features = ["server", "macros", "transport-io"] }
 serde = { version = "1.0.229", features = ["derive"] }
 tokio = { version = "1.54.1", features = ["full"] }
+
+[build-dependencies]
+clap = { version = "4.6.8", features = ["derive"] }
+clap_mangen = "0.3.4"
