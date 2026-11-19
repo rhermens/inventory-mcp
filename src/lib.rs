@@ -20,26 +20,26 @@ impl Inventory {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchRequest {
-    /// Case-insensitive substring to match against binary names and manual pages.
+    /// Keyword to pass to `man -k`. The keyword is lowercased first.
     pub query: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DescribeRequest {
-    /// Exact, case-sensitive binary name.
+    /// Manual page name to pass to `man`, such as `git`.
     pub name: String,
 }
 
 #[tool_handler(
     name = "inventory-mcp",
-    instructions = "Use this server to discover local command-line tools and read their installed manual pages before choosing a command or its flags. Use search with a task keyword or binary name to find candidates (default limit: 20). Use describe with an exact binary name to read its full manual. Use list when you need the complete inventory. Results reflect the server's startup PATH and installed manuals. Entries without a readable manual are omitted. This server does not execute discovered commands."
+    instructions = "Use this server to find local command-line tools and read their manual pages before choosing a command or its flags. Use search with a task keyword or command name to find candidate manual pages; it runs `man -k`. Use describe with a manual page name to read the full page; it runs `man`. Results come from the manual pages installed in the server's environment. This server does not execute the commands it finds."
 )]
 impl rmcp::ServerHandler for Inventory {}
 
 #[tool_router]
 impl Inventory {
     #[tool(
-        description = "Search binary names and manual pages by case-insensitive substring; defaults to 20 results sorted by name"
+        description = "Search manual page names and short descriptions with `man -k`; returns one result per matching page"
     )]
     pub async fn search(&self, Parameters(request): Parameters<SearchRequest>) -> CallToolResult {
         let output = match Command::new("man")
@@ -68,7 +68,7 @@ impl Inventory {
         }
     }
 
-    #[tool(description = "Get the full manual page for an exact, case-sensitive binary name")]
+    #[tool(description = "Get the full manual page for a name with `man`")]
     pub async fn describe(
         &self,
         Parameters(request): Parameters<DescribeRequest>,

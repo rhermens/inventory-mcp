@@ -1,13 +1,14 @@
 # inventory-mcp
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lists files found on `$PATH` alongside their manual pages.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that wraps `man`. Agents use it to search for local commands and read their manual pages.
 
 ## Requirements
 
 - `man` available on the server's `$PATH`.
-- Installed manual pages for the commands you want to discover.
+- Installed manual pages for the commands you want to find.
+- A populated `man -k` (apropos) database, for the `search` tool.
 
-The server uses the environment inherited from its MCP client. Set `PATH` and `MANPATH` in that environment to control discovery and manual lookup.
+The server uses the environment inherited from its MCP client. Set `PATH` to choose the `man` binary. Set `MANPATH` to choose the manual pages.
 
 ## Build
 
@@ -52,59 +53,48 @@ For development, run the server through Cargo, as shown in [`.pi/mcp.json`](.pi/
 }
 ```
 
-The server communicates through stdin and stdout. It is not an interactive CLI.
+The server communicates through stdin and stdout.
 
-During MCP initialization, the server provides agent instructions for discovering tools with `search`, reading manuals with `describe`, and requesting the complete inventory with `list`.
+During MCP initialization, the server provides agent instructions for finding commands with `search` and reading manual pages with `describe`.
 
 ## Tools
 
-### `list`
-
-Takes no arguments. Returns one MCP text content block per discovered entry:
-
-```text
-<file name> - <full manual page text>
-```
-
-The description contains the full output of `man <file name>`, not only the `NAME` or `SYNOPSIS` section. Results have no guaranteed order.
+Each tool call runs `man` as a child process. The server keeps no state between calls.
 
 ### `search`
 
-Finds case-insensitive substring matches in file names and full manual page text:
+Runs `man -k <query>` with the query lowercased:
 
 ```json
-{ "query": "version control", "limit": 5 }
+{ "query": "version control" }
 ```
 
-- `query` is required. An empty query matches every entry.
-- `limit` is optional and defaults to 20. Zero returns no results.
-- Matches are sorted by file name, then manual page text, before applying the limit.
-- Each result uses the same full-text format as `list`. No matches returns an empty successful result.
+- `query` is required.
+- `man -k` matches manual page names and short descriptions, not full page text.
+- Each output line becomes one MCP text content block, with runs of whitespace collapsed to one space.
+- If `man -k` exits with a nonzero status, the tool returns an error with its stderr. Most `man` implementations exit nonzero when nothing matches.
 
 ### `describe`
 
-Returns the full manual page for an exact, case-sensitive file name:
+Runs `man <name>`:
 
 ```json
 { "name": "git" }
 ```
 
-An unknown name returns an MCP tool error with `Binary not found: <name>`. If several entries share a name, the first manual page in lexical order is returned.
+- Returns the full `man` output as one MCP text content block.
+- If `man` exits with a nonzero status, the tool returns an error with its stderr.
 
-Both tools use the startup inventory and perform no additional manual lookups.
+## CLI
 
-## Discovery behavior
+```bash
+inventory-mcp serve           # Run the MCP server over stdio.
+inventory-mcp query <SEARCH>  # Run the search tool once and print the result.
+```
 
-- Scans `$PATH` once at startup, before accepting MCP requests.
-- Treats empty `$PATH` entries as the current directory.
-- Visits directories sequentially and follows file symlinks.
-- Runs up to 16 manual lookups concurrently.
-- Skips unreadable directories and entries whose manual lookup fails.
-- Deduplicates entries by file name and manual page text.
+`query` prints the MCP tool result in Rust debug format. Use it to test `search` from the terminal.
 
-The scanner currently checks whether an entry is a regular file, not whether it has executable permission. Manual lookup uses the file name, not its full path.
-
-Manual lookups have no timeout. Startup waits for all lookups to finish. Restart the server to refresh the inventory.
+The build script generates man pages for the CLI with `clap_mangen`. They are written to Cargo's `OUT_DIR`.
 
 ## Nix
 
