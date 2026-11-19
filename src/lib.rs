@@ -13,71 +13,14 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
-use tokio::{process::Command, task::JoinSet};
+use tokio::process::Command;
 
 #[derive(Clone)]
-pub struct Inventory {
-    pub binaries: HashSet<Binary>,
-}
+pub struct Inventory {}
 
 impl Inventory {
-    async fn scan_dir_binaries(directory: PathBuf) -> Result<HashSet<Binary>> {
-        let entries = tokio::task::spawn_blocking(move || {
-            let Ok(entries) = fs::read_dir(directory) else {
-                return Vec::new();
-            };
-
-            entries
-                .flatten()
-                .filter(|entry| fs::metadata(entry.path()).is_ok_and(|metadata| metadata.is_file()))
-                .collect::<Vec<_>>()
-        })
-        .await?;
-
-        let mut tasks = JoinSet::new();
-        let mut binaries = HashSet::new();
-
-        for entry in entries {
-            tasks.spawn(async move { Binary::try_new(entry).await });
-
-            if tasks.len() >= 16
-                && let Some(result) = tasks.join_next().await
-                && let Ok(binary) = result?
-            {
-                binaries.insert(binary);
-            }
-        }
-
-        while let Some(result) = tasks.join_next().await {
-            if let Ok(binary) = result? {
-                binaries.insert(binary);
-            }
-        }
-
-        Ok(binaries)
-    }
-
-    async fn scan_binaries() -> Result<HashSet<Binary>> {
-        let path = env::var_os("PATH").unwrap_or_default();
-        let mut binaries = HashSet::new();
-
-        for directory in env::split_paths(&path) {
-            let directory = if directory.as_os_str().is_empty() {
-                ".".into()
-            } else {
-                directory
-            };
-
-            binaries.extend(Self::scan_dir_binaries(directory).await?);
-        }
-
-        Ok(binaries)
-    }
-
     pub async fn new() -> Result<Self> {
-        Ok(Self {
-            binaries: Self::scan_binaries().await?,
-        })
+        Ok(Self {})
     }
 }
 
@@ -143,58 +86,39 @@ impl rmcp::ServerHandler for Inventory {}
 
 #[tool_router]
 impl Inventory {
-    #[tool(description = "List available user binaries")]
-    fn list(&self) -> CallToolResult {
-        CallToolResult::success(self.binaries.iter().map(|e| e.into()).collect())
-    }
-
     #[tool(
         description = "Search binary names and manual pages by case-insensitive substring; defaults to 20 results sorted by name"
     )]
-    fn search(&self, Parameters(request): Parameters<SearchRequest>) -> CallToolResult {
-        let query = request.query.to_lowercase();
-        let mut matches: Vec<_> = self
-            .binaries
-            .iter()
-            .filter(|binary| {
-                binary
-                    .binary
-                    .to_string_lossy()
-                    .to_lowercase()
-                    .contains(&query)
-                    || binary.description.to_lowercase().contains(&query)
-            })
-            .collect();
-        matches.sort_unstable_by(|left, right| {
-            left.binary
-                .cmp(&right.binary)
-                .then_with(|| left.description.cmp(&right.description))
-        });
+    async fn search(&self, Parameters(request): Parameters<SearchRequest>) -> CallToolResult {
+        let output = match Command::new("apropos")
+            .args([request.query.to_lowercase()])
+            .output()
+            .await
+        {
+            Ok(o) => o,
+            Err(err) => return CallToolResult::error(vec![ContentBlock::text(err.to_string())]),
+        };
 
-        CallToolResult::success(
-            matches
-                .into_iter()
-                .take(request.limit.unwrap_or(20))
-                .map(ContentBlock::from)
-                .collect(),
-        )
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        if output.status.success() {
+            CallToolResult::success(
+                stdout
+                    .split("\n")
+                    .into_iter()
+                    .take(request.limit.unwrap_or(20))
+                    .map(ContentBlock::text)
+                    .collect(),
+            )
+        } else {
+            CallToolResult::error(vec![ContentBlock::text(stderr)])
+        }
     }
 
     #[tool(description = "Get the full manual page for an exact, case-sensitive binary name")]
     fn describe(&self, Parameters(request): Parameters<DescribeRequest>) -> CallToolResult {
-        let name = OsString::from(&request.name);
-        match self
-            .binaries
-            .iter()
-            .filter(|binary| binary.binary == name)
-            .min_by(|left, right| left.description.cmp(&right.description))
-        {
-            Some(binary) => CallToolResult::success(vec![binary.into()]),
-            None => CallToolResult::error(vec![ContentBlock::text(format!(
-                "Binary not found: {}",
-                request.name
-            ))]),
-        }
+        todo!()
     }
 }
 
