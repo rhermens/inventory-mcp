@@ -1,13 +1,11 @@
-use std::{env, ffi::OsString, fs::DirEntry};
-
 use anyhow::Result;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, ContentBlock},
     schemars, tool, tool_handler, tool_router,
 };
-use serde::{Deserialize, Serialize};
-use tokio::{io::stdout, process::Command};
+use serde::Deserialize;
+use tokio::process::Command;
 
 #[derive(Clone)]
 pub struct Inventory {}
@@ -15,46 +13,6 @@ pub struct Inventory {}
 impl Inventory {
     pub async fn new() -> Result<Self> {
         Ok(Self {})
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Hash, Clone)]
-pub struct Binary {
-    pub binary: OsString,
-    pub description: String,
-}
-
-impl Binary {
-    async fn try_new(value: DirEntry) -> Result<Self> {
-        let output = Command::new("man")
-            .args([value.file_name().to_str().expect("No file name")])
-            .output()
-            .await?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        if output.status.success() {
-            Ok(Binary {
-                binary: value.file_name(),
-                description: stdout.to_string(),
-            })
-        } else {
-            Err(anyhow::Error::msg(stderr.to_owned().to_string()))
-        }
-    }
-}
-
-impl From<&Binary> for ContentBlock {
-    fn from(val: &Binary) -> Self {
-        ContentBlock::text(format!(
-            "{} - {}",
-            val.binary
-                .to_owned()
-                .into_string()
-                .expect("Failed to read binary string"),
-            val.description
-        ))
     }
 }
 
