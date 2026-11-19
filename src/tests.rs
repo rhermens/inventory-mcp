@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn search_returns_tool_error_when_no_manual_matches() -> Result<()> {
+async fn search_returns_tool() -> Result<()> {
     let inventory = Inventory::new().await?;
 
     let result = inventory
@@ -15,7 +15,7 @@ async fn search_returns_tool_error_when_no_manual_matches() -> Result<()> {
 }
 
 #[tokio::test]
-async fn describe_returns_tool_error_when_no_manual_matches() -> Result<()> {
+async fn describe_returns_tool() -> Result<()> {
     let inventory = Inventory::new().await?;
 
     let result = inventory
