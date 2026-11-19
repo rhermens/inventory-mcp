@@ -24,6 +24,11 @@
 
         bin = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
+          outputs = [ "out" "man" ];
+          postInstall = ''
+            find target -path '*/build/inventory-mcp-*/out/*.1' \
+              -exec install -Dm644 -t "$man/share/man/man1" {} +
+          '';
         });
       in
       {
