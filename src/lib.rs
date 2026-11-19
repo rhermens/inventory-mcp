@@ -73,7 +73,19 @@ impl Inventory {
         &self,
         Parameters(request): Parameters<DescribeRequest>,
     ) -> CallToolResult {
-        let output = match Command::new("man").args(vec![&request.name]).output().await {
+        let output = match Command::new("man")
+            .args([
+                "--no-hyphenation",
+                "--no-justification",
+                "--pager=cat",
+                "--",
+                &request.name,
+            ])
+            .env("MANWIDTH", "120")
+            .env_remove("MAN_KEEP_FORMATTING")
+            .output()
+            .await
+        {
             Ok(o) => o,
             Err(err) => return CallToolResult::error(vec![ContentBlock::text(err.to_string())]),
         };

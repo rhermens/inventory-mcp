@@ -2,7 +2,7 @@
   "mcpServers": {
     "inventory": {
       "command": "cargo",
-      "args": ["run", "--manifest-path", "/home/roy/Projects/inventory-mcp/Cargo.toml"],
+      "args": ["run", "--manifest-path", "/home/roy/Projects/inventory-mcp/Cargo.toml", "--", "serve"],
       "type": "stdio"
     }
   }
